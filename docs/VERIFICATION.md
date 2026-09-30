@@ -41,7 +41,7 @@ Database inspection found that n8n stores an initial execution snapshot and soft
 
 ## Not verified
 
-Real GitHub/Slack calls, Docker Compose startup, Vercel deployment, n8n Cloud execution, concurrent idempotency, and exactly-once notification delivery. No external issues, Slack messages, repositories or deployments were created. The repository link remains user-configurable until the source is published.
+Real GitHub/Slack calls, Docker Compose startup, Vercel deployment, n8n Cloud execution, concurrent idempotency, and exactly-once notification delivery. No external issues, Slack messages or deployments were created during verification. The reviewed source was subsequently published, with owner approval, at [https://github.com/ahamedfoisal/supportflow](https://github.com/ahamedfoisal/supportflow).
 
 ## Personally confirmed by the project owner
 

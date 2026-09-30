@@ -8,7 +8,9 @@ Implemented persistent request tracking, bounded retries and notification recove
 
 **Stack:** n8n · JavaScript · Next.js · REST APIs · Webhooks · n8n Data Tables
 
-**Links:** Add the actual GitHub repository URL after publishing. Add a demo URL only after deploying; label a simulation-only demo accordingly.
+**Source:** [https://github.com/ahamedfoisal/supportflow](https://github.com/ahamedfoisal/supportflow)
+
+**Live demo:** Not deployed yet. Add a demo URL only after deployment; label a simulation-only demo accordingly.
 
 **What to show:** the workflow diagram, a completed mock request, notification failure followed by recovery with the same ticket, and the verification report.
 

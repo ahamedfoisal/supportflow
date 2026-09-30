@@ -1,5 +1,7 @@
 # SupportFlow: Automated IT Request Triage
 
+[Source repository](https://github.com/ahamedfoisal/supportflow) · [Verification](docs/VERIFICATION.md) · [Deployment guide](docs/DEPLOYMENT.md)
+
 A learning/portfolio project, not production experience. GitHub Issues is a lightweight ticket stand-in, **not an ITSM platform**. No AI, access grants, identity changes, SLA engine or enterprise integration claims.
 
 **Verification status:** Imported, published and executed in local n8n **2.41.4** against mock APIs. Validation, authentication, sequential duplicate detection, bounded retries, permanent failure, notification recovery, ambiguous timeout, classification, restart persistence and sanitized failure audit all passed. Next.js production build, seven server-route tests, four mock-service tests and actual frontend → n8n → mock API forwarding passed. **GitHub/Slack live integration, Docker Compose, Vercel and n8n Cloud are not tested.** See [verification](docs/VERIFICATION.md).
