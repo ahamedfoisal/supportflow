@@ -1,0 +1,1 @@
+PASS unexpected execution failure triggers a persisted sanitized audit row

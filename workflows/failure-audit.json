@@ -1,0 +1,84 @@
+{
+  "name": "SupportFlow sanitized failure audit",
+  "nodes": [
+    {
+      "id": "error",
+      "name": "Unhandled failure",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "sanitize",
+      "name": "Safe context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const e=$json.execution||{};return [{json:{execution_id:String(e.id||'unavailable'),workflow_id:String($json.workflow?.id||''),last_node:String(e.lastNodeExecuted||'trigger'),occurred_at:new Date().toISOString(),outcome:'unhandled_failure'}}];"
+      }
+    },
+    {
+      "id": "audit",
+      "name": "Persist safe audit",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "supportflow_failures"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Unhandled failure": {
+      "main": [
+        [
+          {
+            "node": "Safe context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe context": {
+      "main": [
+        [
+          {
+            "node": "Persist safe audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "active": false
+}

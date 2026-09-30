@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.env*
+!.env.example
+!.env.local.example
+.runtime/
+*.sqlite*
+mock-state.json
+
+.DS_Store
+.vercel/
+work/
+*.log
+*secrets*.json
+*session*.json

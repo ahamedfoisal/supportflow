@@ -1,0 +1,15 @@
+✔ normalization and invalid fields (1.672959ms)
+✔ public simulation never calls workflow (11.663917ms)
+✔ real mode rejects wrong code and cross-origin (0.610958ms)
+✔ invalid input and payload bounds (0.607958ms)
+✔ authorized forwarding strips code, returns partial success, never leaks secret (0.505209ms)
+✔ upstream timeout means unknown, not failed ticket (0.314417ms)
+✔ per-instance request limit (1.461375ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 79.88725

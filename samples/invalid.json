@@ -1,0 +1,8 @@
+{
+  "request_id": "REQ-BAD",
+  "requester_email": "invalid",
+  "category": "access",
+  "description": "I cannot access the team knowledge repository",
+  "business_impact": "single_user",
+  "urgency": "critical"
+}

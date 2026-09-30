@@ -1,0 +1,11 @@
+PASS valid mock request
+PASS sequential duplicate
+PASS validation (email, required field, enums and lengths)
+PASS webhook authentication
+PASS bounded rate-limit retries for ticket and notification
+PASS permanent ticket failure and no retry on API authentication failure
+PASS notification recovery
+PASS ambiguous creation guarded
+PASS normalization and priority/team classification
+Restart n8n without deleting its volume, then run:
+RESTART_REQUEST_ID=REQ-1790771117392 node scripts/verify-n8n.mjs --after-restart

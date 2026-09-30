@@ -1,0 +1,1330 @@
+{
+  "id": "SupportFlowDemo01",
+  "name": "SupportFlow: Automated IT Request Triage",
+  "nodes": [
+    {
+      "id": "request",
+      "name": "Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "supportflow",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "supportflow-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUPPORTFLOW_WEBHOOK",
+          "name": "SupportFlow Webhook"
+        }
+      }
+    },
+    {
+      "id": "configuration",
+      "name": "Configuration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{json:{mode:'mock',ticket_url:'http://127.0.0.1:4010/issues',notification_url:'http://127.0.0.1:4010/notify',channel:'demo'}}];"
+      }
+    },
+    {
+      "id": "validate-and-classify",
+      "name": "Validate and classify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function validate(input) {\n  const errors = [];\n  const r = {};\n  if (!input || typeof input !== 'object' || Array.isArray(input)) return {errors:['Expected a JSON object'],request:{}};\n  const limits = {request_id:[3,64],requester_email:[3,254],category:[2,24],description:[10,2000],business_impact:[2,24],urgency:[2,16]};\n  for (const [k,[min,max]] of Object.entries(limits)) {\n    if (typeof input[k] !== 'string') {errors.push(`${k}: required string`); continue;}\n    r[k] = input[k].trim().replace(/\\s+/g,' ');\n    if (k === 'request_id') r[k] = r[k].toUpperCase();\n    else if (k !== 'description') r[k] = r[k].toLowerCase();\n    if (r[k].length < min || r[k].length > max) errors.push(`${k}: ${min}–${max} characters required`);\n  }\n  if (r.request_id && !/^[A-Z0-9][A-Z0-9_-]*$/.test(r.request_id)) errors.push('request_id: letters, digits, hyphens and underscores only');\n  if (r.requester_email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(r.requester_email)) errors.push('requester_email: invalid email');\n  for (const [k,values] of Object.entries({category:['access','hardware','software','network','other'],business_impact:['single_user','team','organization'],urgency:['normal','high']})) {\n    if (r[k] && !values.includes(r[k])) errors.push(`${k}: use ${values.join(', ')}`);\n  }\n  return {errors,request:r};\n}\n\nconst {errors,request:r}=validate($('Request').first().json.body);const cfg=$('Configuration').first().json; const priority=r.business_impact==='organization'&&r.urgency==='high'?'P1':r.business_impact==='organization'||r.urgency==='high'?'P2':'P3';const team={access:'Identity support',hardware:'Endpoint support',software:'Application support',network:'Network support',other:'Service desk'}[r.category];return [{json:{request:r,errors,priority,team,key:cfg.mode+':'+(r.request_id||''),fingerprint:JSON.stringify(r),outcome:'validation_failed',http_status:422,request_id:r.request_id||null,mode:cfg.mode}}];"
+      }
+    },
+    {
+      "id": "valid",
+      "name": "Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Valid",
+              "leftValue": "={{ $json.errors.length === 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "find-request",
+      "name": "Find request",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "supportflow_requests",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "request_key",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate and classify').first().json.key }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "decide",
+      "name": "Decide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const v=$('Validate and classify').first().json;const old=$json.state?JSON.parse($json.state):null;let s={...v,ticket_url:null,attempt:0,execution_id:$execution.id};if(old){s={...old,execution_id:$execution.id};if(old.fingerprint!==v.fingerprint){s.outcome='request_id_conflict';s.http_status=409;s.action='respond';}else if(old.ticket_url && old.outcome!=='completed'){s.action='notify';}else{s.action='respond';s.http_status=old.outcome==='completed'?200:409;}}else{s.action='create';s.outcome='creation_uncertain';s.http_status=409;}return [{json:s}];"
+      }
+    },
+    {
+      "id": "create-ticket",
+      "name": "Create ticket",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Create ticket",
+              "leftValue": "={{ $json.action === 'create' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "recover-notification",
+      "name": "Recover notification",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        240,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Recover notification",
+              "leftValue": "={{ $json.action === 'notify' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "reserve-request",
+      "name": "Reserve request",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        260
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "supportflow_requests",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "request_key",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate and classify').first().json.key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_key": "={{ $('Validate and classify').first().json.key }}",
+            "state": "={{ JSON.stringify($json) }}"
+          }
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "prepare-ticket",
+      "name": "Prepare ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        260
+      ],
+      "parameters": {
+        "jsCode": "return [{json:JSON.parse($json.state)}];"
+      }
+    },
+    {
+      "id": "ticket-api-1",
+      "name": "ticket API 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.ticket_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {title:'['+$json.request_id+'] '+$json.priority+' '+$json.request.category+' request',body:'SupportFlow request\\n'+JSON.stringify($json.request,null,2)+'\\nPriority: '+$json.priority+'\\nSuggested team: '+$json.team} }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "assess-ticket-1",
+      "name": "Assess ticket 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        260
+      ],
+      "parameters": {
+        "jsCode": "const s={...$('Prepare ticket').item.json};const res=$json;const status=Number(res.statusCode||0);const b=res.body||{};const h=res.headers||{};const ra=h['retry-after'];const parsedDelay=ra===undefined?0:(Number.isFinite(Number(ra))?Number(ra):Math.ceil((Date.parse(ra)-Date.now())/1000));const resetDelay=h['x-ratelimit-remaining']==='0'?Math.ceil(Number(h['x-ratelimit-reset']||0)-Date.now()/1000):0;const retryAfter=Math.max(0,Number.isFinite(parsedDelay)?parsedDelay:60,resetDelay);s.stage='ticket';s.attempt=1;s.last_status=status;s.execution_id=$execution.id;s.retry=false;if(status===201&&typeof b.html_url==='string'){s.ticket_url=b.html_url;s.outcome='notification_pending';s.http_status=202;}else{const rate=status===429||(status===403&&('retry-after' in h||h['x-ratelimit-remaining']==='0'));s.retry=rate&&1<3&&retryAfter<=5;s.outcome=status===0||status>=500||status===201?'creation_uncertain':'ticket_failed';s.http_status=s.outcome==='creation_uncertain'?409:502;}\n s.wait_seconds=Math.max(1,retryAfter);return [{json:s}];"
+      }
+    },
+    {
+      "id": "retry-ticket-1",
+      "name": "Retry ticket 1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Retry ticket 1",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ticket-pause-1",
+      "name": "ticket pause 1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        520
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $json.wait_seconds }}",
+        "unit": "seconds"
+      },
+      "webhookId": "ticket-pause-1"
+    },
+    {
+      "id": "ticket-api-2",
+      "name": "ticket API 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.ticket_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {title:'['+$json.request_id+'] '+$json.priority+' '+$json.request.category+' request',body:'SupportFlow request\\n'+JSON.stringify($json.request,null,2)+'\\nPriority: '+$json.priority+'\\nSuggested team: '+$json.team} }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "assess-ticket-2",
+      "name": "Assess ticket 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        520
+      ],
+      "parameters": {
+        "jsCode": "const s={...$('ticket pause 1').item.json};const res=$json;const status=Number(res.statusCode||0);const b=res.body||{};const h=res.headers||{};const ra=h['retry-after'];const parsedDelay=ra===undefined?0:(Number.isFinite(Number(ra))?Number(ra):Math.ceil((Date.parse(ra)-Date.now())/1000));const resetDelay=h['x-ratelimit-remaining']==='0'?Math.ceil(Number(h['x-ratelimit-reset']||0)-Date.now()/1000):0;const retryAfter=Math.max(0,Number.isFinite(parsedDelay)?parsedDelay:60,resetDelay);s.stage='ticket';s.attempt=2;s.last_status=status;s.execution_id=$execution.id;s.retry=false;if(status===201&&typeof b.html_url==='string'){s.ticket_url=b.html_url;s.outcome='notification_pending';s.http_status=202;}else{const rate=status===429||(status===403&&('retry-after' in h||h['x-ratelimit-remaining']==='0'));s.retry=rate&&2<3&&retryAfter<=5;s.outcome=status===0||status>=500||status===201?'creation_uncertain':'ticket_failed';s.http_status=s.outcome==='creation_uncertain'?409:502;}\n s.wait_seconds=Math.max(2,retryAfter);return [{json:s}];"
+      }
+    },
+    {
+      "id": "retry-ticket-2",
+      "name": "Retry ticket 2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        520
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Retry ticket 2",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ticket-pause-2",
+      "name": "ticket pause 2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        520
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $json.wait_seconds }}",
+        "unit": "seconds"
+      },
+      "webhookId": "ticket-pause-2"
+    },
+    {
+      "id": "ticket-api-3",
+      "name": "ticket API 3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        780
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.ticket_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {title:'['+$json.request_id+'] '+$json.priority+' '+$json.request.category+' request',body:'SupportFlow request\\n'+JSON.stringify($json.request,null,2)+'\\nPriority: '+$json.priority+'\\nSuggested team: '+$json.team} }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "assess-ticket-3",
+      "name": "Assess ticket 3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        780
+      ],
+      "parameters": {
+        "jsCode": "const s={...$('ticket pause 2').item.json};const res=$json;const status=Number(res.statusCode||0);const b=res.body||{};const h=res.headers||{};const ra=h['retry-after'];const parsedDelay=ra===undefined?0:(Number.isFinite(Number(ra))?Number(ra):Math.ceil((Date.parse(ra)-Date.now())/1000));const resetDelay=h['x-ratelimit-remaining']==='0'?Math.ceil(Number(h['x-ratelimit-reset']||0)-Date.now()/1000):0;const retryAfter=Math.max(0,Number.isFinite(parsedDelay)?parsedDelay:60,resetDelay);s.stage='ticket';s.attempt=3;s.last_status=status;s.execution_id=$execution.id;s.retry=false;if(status===201&&typeof b.html_url==='string'){s.ticket_url=b.html_url;s.outcome='notification_pending';s.http_status=202;}else{const rate=status===429||(status===403&&('retry-after' in h||h['x-ratelimit-remaining']==='0'));s.retry=rate&&3<3&&retryAfter<=5;s.outcome=status===0||status>=500||status===201?'creation_uncertain':'ticket_failed';s.http_status=s.outcome==='creation_uncertain'?409:502;}\n s.wait_seconds=Math.max(3,retryAfter);return [{json:s}];"
+      }
+    },
+    {
+      "id": "save-ticket-result",
+      "name": "Save ticket result",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        780
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "supportflow_requests",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "request_key",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate and classify').first().json.key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_key": "={{ $('Validate and classify').first().json.key }}",
+            "state": "={{ JSON.stringify($json) }}"
+          }
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "read-ticket-result",
+      "name": "Read ticket result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        780
+      ],
+      "parameters": {
+        "jsCode": "return [{json:JSON.parse($json.state)}];"
+      }
+    },
+    {
+      "id": "ticket-exists",
+      "name": "Ticket exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        780
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Ticket exists",
+              "leftValue": "={{ !!$json.ticket_url }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "prepare-notification",
+      "name": "Prepare notification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        780
+      ],
+      "parameters": {
+        "jsCode": "return [{json:{...$json,attempt:0}}];"
+      }
+    },
+    {
+      "id": "notification-api-1",
+      "name": "notification API 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        1040
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.notification_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {channel:$('Configuration').first().json.channel,text:$json.request_id+' '+$json.priority+' '+$json.ticket_url,unfurl_links:false,unfurl_media:false} }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "assess-notification-1",
+      "name": "Assess notification 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        1040
+      ],
+      "parameters": {
+        "jsCode": "const s={...$('Prepare notification').item.json};const res=$json;const status=Number(res.statusCode||0);const b=res.body||{};const h=res.headers||{};const ra=h['retry-after'];const parsedDelay=ra===undefined?0:(Number.isFinite(Number(ra))?Number(ra):Math.ceil((Date.parse(ra)-Date.now())/1000));const resetDelay=h['x-ratelimit-remaining']==='0'?Math.ceil(Number(h['x-ratelimit-reset']||0)-Date.now()/1000):0;const retryAfter=Math.max(0,Number.isFinite(parsedDelay)?parsedDelay:60,resetDelay);s.stage='notification';s.attempt=1;s.last_status=status;s.execution_id=$execution.id;s.retry=false;if(status>=200&&status<300&&b.ok===true){s.outcome='completed';s.http_status=200;}else{s.retry=(status===429||status>=500||status===0)&&1<3&&retryAfter<=5;s.outcome='notification_failed';s.http_status=207;}\n s.wait_seconds=Math.max(1,retryAfter);return [{json:s}];"
+      }
+    },
+    {
+      "id": "retry-notification-1",
+      "name": "Retry notification 1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        480,
+        1040
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Retry notification 1",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notification-pause-1",
+      "name": "notification pause 1",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        1040
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $json.wait_seconds }}",
+        "unit": "seconds"
+      },
+      "webhookId": "notification-pause-1"
+    },
+    {
+      "id": "notification-api-2",
+      "name": "notification API 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        1040
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.notification_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {channel:$('Configuration').first().json.channel,text:$json.request_id+' '+$json.priority+' '+$json.ticket_url,unfurl_links:false,unfurl_media:false} }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "assess-notification-2",
+      "name": "Assess notification 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1040
+      ],
+      "parameters": {
+        "jsCode": "const s={...$('notification pause 1').item.json};const res=$json;const status=Number(res.statusCode||0);const b=res.body||{};const h=res.headers||{};const ra=h['retry-after'];const parsedDelay=ra===undefined?0:(Number.isFinite(Number(ra))?Number(ra):Math.ceil((Date.parse(ra)-Date.now())/1000));const resetDelay=h['x-ratelimit-remaining']==='0'?Math.ceil(Number(h['x-ratelimit-reset']||0)-Date.now()/1000):0;const retryAfter=Math.max(0,Number.isFinite(parsedDelay)?parsedDelay:60,resetDelay);s.stage='notification';s.attempt=2;s.last_status=status;s.execution_id=$execution.id;s.retry=false;if(status>=200&&status<300&&b.ok===true){s.outcome='completed';s.http_status=200;}else{s.retry=(status===429||status>=500||status===0)&&2<3&&retryAfter<=5;s.outcome='notification_failed';s.http_status=207;}\n s.wait_seconds=Math.max(2,retryAfter);return [{json:s}];"
+      }
+    },
+    {
+      "id": "retry-notification-2",
+      "name": "Retry notification 2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        1300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "Retry notification 2",
+              "leftValue": "={{ $json.retry }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notification-pause-2",
+      "name": "notification pause 2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        1300
+      ],
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $json.wait_seconds }}",
+        "unit": "seconds"
+      },
+      "webhookId": "notification-pause-2"
+    },
+    {
+      "id": "notification-api-3",
+      "name": "notification API 3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        1300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.notification_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {channel:$('Configuration').first().json.channel,text:$json.request_id+' '+$json.priority+' '+$json.ticket_url,unfurl_links:false,unfurl_media:false} }}",
+        "options": {
+          "timeout": 8000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "assess-notification-3",
+      "name": "Assess notification 3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        1300
+      ],
+      "parameters": {
+        "jsCode": "const s={...$('notification pause 2').item.json};const res=$json;const status=Number(res.statusCode||0);const b=res.body||{};const h=res.headers||{};const ra=h['retry-after'];const parsedDelay=ra===undefined?0:(Number.isFinite(Number(ra))?Number(ra):Math.ceil((Date.parse(ra)-Date.now())/1000));const resetDelay=h['x-ratelimit-remaining']==='0'?Math.ceil(Number(h['x-ratelimit-reset']||0)-Date.now()/1000):0;const retryAfter=Math.max(0,Number.isFinite(parsedDelay)?parsedDelay:60,resetDelay);s.stage='notification';s.attempt=3;s.last_status=status;s.execution_id=$execution.id;s.retry=false;if(status>=200&&status<300&&b.ok===true){s.outcome='completed';s.http_status=200;}else{s.retry=(status===429||status>=500||status===0)&&3<3&&retryAfter<=5;s.outcome='notification_failed';s.http_status=207;}\n s.wait_seconds=Math.max(3,retryAfter);return [{json:s}];"
+      }
+    },
+    {
+      "id": "save-notification-result",
+      "name": "Save notification result",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        1300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "supportflow_requests",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "request_key",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate and classify').first().json.key }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_key": "={{ $('Validate and classify').first().json.key }}",
+            "state": "={{ JSON.stringify($json) }}"
+          }
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "read-final-state",
+      "name": "Read final state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        1300
+      ],
+      "parameters": {
+        "jsCode": "return [{json:JSON.parse($json.state)}];"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        1560
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {request_id:$json.request_id,priority:$json.priority||null,outcome:$json.outcome,ticket_url:$json.ticket_url||null,mode:$json.mode,errors:$json.errors?.length?$json.errors:undefined,execution_id:$json.execution_id||$execution.id} }}",
+        "options": {
+          "responseCode": "={{ $json.http_status || 200 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Prepare ticket": {
+      "main": [
+        [
+          {
+            "node": "ticket API 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ticket API 1": {
+      "main": [
+        [
+          {
+            "node": "Assess ticket 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess ticket 1": {
+      "main": [
+        [
+          {
+            "node": "Retry ticket 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry ticket 1": {
+      "main": [
+        [
+          {
+            "node": "ticket pause 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save ticket result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ticket pause 1": {
+      "main": [
+        [
+          {
+            "node": "ticket API 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ticket API 2": {
+      "main": [
+        [
+          {
+            "node": "Assess ticket 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess ticket 2": {
+      "main": [
+        [
+          {
+            "node": "Retry ticket 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry ticket 2": {
+      "main": [
+        [
+          {
+            "node": "ticket pause 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save ticket result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ticket pause 2": {
+      "main": [
+        [
+          {
+            "node": "ticket API 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ticket API 3": {
+      "main": [
+        [
+          {
+            "node": "Assess ticket 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess ticket 3": {
+      "main": [
+        [
+          {
+            "node": "Save ticket result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare notification": {
+      "main": [
+        [
+          {
+            "node": "notification API 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notification API 1": {
+      "main": [
+        [
+          {
+            "node": "Assess notification 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess notification 1": {
+      "main": [
+        [
+          {
+            "node": "Retry notification 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry notification 1": {
+      "main": [
+        [
+          {
+            "node": "notification pause 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save notification result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notification pause 1": {
+      "main": [
+        [
+          {
+            "node": "notification API 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notification API 2": {
+      "main": [
+        [
+          {
+            "node": "Assess notification 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess notification 2": {
+      "main": [
+        [
+          {
+            "node": "Retry notification 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry notification 2": {
+      "main": [
+        [
+          {
+            "node": "notification pause 2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save notification result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notification pause 2": {
+      "main": [
+        [
+          {
+            "node": "notification API 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notification API 3": {
+      "main": [
+        [
+          {
+            "node": "Assess notification 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assess notification 3": {
+      "main": [
+        [
+          {
+            "node": "Save notification result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request": {
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuration": {
+      "main": [
+        [
+          {
+            "node": "Validate and classify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and classify": {
+      "main": [
+        [
+          {
+            "node": "Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid": {
+      "main": [
+        [
+          {
+            "node": "Find request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find request": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "Create ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create ticket": {
+      "main": [
+        [
+          {
+            "node": "Reserve request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recover notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover notification": {
+      "main": [
+        [
+          {
+            "node": "Prepare notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reserve request": {
+      "main": [
+        [
+          {
+            "node": "Prepare ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save ticket result": {
+      "main": [
+        [
+          {
+            "node": "Read ticket result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read ticket result": {
+      "main": [
+        [
+          {
+            "node": "Ticket exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ticket exists": {
+      "main": [
+        [
+          {
+            "node": "Prepare notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save notification result": {
+      "main": [
+        [
+          {
+            "node": "Read final state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read final state": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false,
+    "executionTimeout": 90
+  },
+  "active": false,
+  "pinData": {}
+}

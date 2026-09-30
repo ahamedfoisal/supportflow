@@ -1,0 +1,3 @@
+PASS public frontend simulation creates no mock ticket
+PASS actual HTTP forwarding: Next.js -> n8n 2.41.4 -> mock ticket + notification
+PASS repeated frontend submission preserves ticket reference and count

@@ -1,0 +1,12 @@
+✔ mock creates realistic ticket and notification (171.059708ms)
+✔ mock rate limiting then success (6.595958ms)
+✔ mock permanent rejection (0.8945ms)
+✔ mock notification failure then recovery (14.0175ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 325.139833
