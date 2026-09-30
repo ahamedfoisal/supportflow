@@ -14,7 +14,7 @@
 
 1. Upload the project to a repository you own after checking `.gitignore` and reviewing the export. Do not upload `.env*`, `.runtime`, node_modules, saved execution data or mock state. No repository was created by this build.
 2. Import that repository in Vercel. Set Root Directory to `web`, framework Next.js, Node.js 24.x. Install with `npm ci`, build with `npm run build`; keep the default Next.js output handling.
-3. For public simulation only, no n8n secret is necessary. Set `SOURCE_REPOSITORY_URL` to your actual GitHub repository. Until configured, `/source` honestly says the source is not published.
+3. For public simulation only, no n8n secret is necessary. The source link defaults to `https://github.com/ahamedfoisal/supportflow`. Set `SOURCE_REPOSITORY_URL` only if you want to override it, such as for a fork.
 4. For protected execution, set these **server-only** environment variables in Vercel project settings:
 
 | Variable | Value |
@@ -23,7 +23,7 @@
 | `N8N_WEBHOOK_SECRET` | Raw random secret (without `Bearer `); n8n Header Auth uses `Authorization` with value `Bearer YOUR_SECRET` |
 | `DEMO_ACCESS_CODE` | Random value at least 16 characters; share privately with the reviewer |
 | `APP_ORIGIN` | Your exact deployed origin, e.g. `https://supportflow-demo.vercel.app` |
-| `SOURCE_REPOSITORY_URL` | Your actual repository URL |
+| `SOURCE_REPOSITORY_URL` | Optional source repository override |
 
 5. Do not use `NEXT_PUBLIC_` for any credential or webhook setting. Do not hardcode secrets in components, commit them, print them to logs or send them to chat. The access code is entered by the reviewer and checked on the server; the n8n secret never goes to the browser.
 6. Configure preview and production environments deliberately. Keep real credentials out of untrusted preview deployments. Changing server environment settings requires redeployment.

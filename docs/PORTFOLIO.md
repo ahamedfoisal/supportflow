@@ -21,7 +21,7 @@
 # Two CV bullets accurate for the delivered verification level
 
 - Implemented a portfolio n8n workflow for validated IT request triage, with GitHub/Slack API configuration, persistent request state, bounded retries and notification recovery; verified end-to-end using local mock APIs, including duplicate detection after restart.
-- Built a Next.js demo with server-side validation, protected webhook forwarding and clearly labeled public simulation; verified the production build, browser simulation, seven server-route tests and actual forwarding to local n8n/mock APIs; live GitHub/Slack integration and hosted deployment remain untested.
+- Built a Next.js demo with server-side validation, protected webhook forwarding and clearly labeled public simulation; verified the production build, browser simulation, seven server-route tests and actual forwarding to local n8n/mock APIs; a public simulation is deployed on Vercel, while live GitHub/Slack integration and n8n Cloud remain untested.
 
 After you run the missing tests, revise these with the specific evidence you obtained. Do not add reliability percentages, time savings, enterprise deployments or production experience without measurements.
 

@@ -39,9 +39,13 @@ Generated webhook secrets were absent from the n8n text logs, delivery source, a
 
 Database inspection found that n8n stores an initial execution snapshot and soft-deletes it even when saved execution results are disabled. Such snapshots can contain the incoming credential until hard pruning. The project uses the standard Authorization header recognized by n8n as sensitive and keeps execution-result saving off, but does **not** claim that this prevents secret-bearing database snapshots. Protect database access and backups; never share raw database/execution exports. No secret values are included in this report.
 
+## Public Vercel deployment
+
+The owner deployed [the public simulation](https://supportflow-three.vercel.app/). On 2026-09-30, a browser submission of the synthetic sample returned SIMULATED, request ID REQ-1001 and priority P3, with the explicit notice that no n8n execution, ticket or Slack message occurred. The source-link route initially returned 503 because its optional environment variable was absent; a default repository URL was added.
+
 ## Not verified
 
-Real GitHub/Slack calls, Docker Compose startup, Vercel deployment, n8n Cloud execution, concurrent idempotency, and exactly-once notification delivery. No external issues, Slack messages or deployments were created during verification. The reviewed source was subsequently published, with owner approval, at [https://github.com/ahamedfoisal/supportflow](https://github.com/ahamedfoisal/supportflow).
+Real GitHub/Slack calls, Docker Compose startup, n8n Cloud execution, concurrent idempotency, and exactly-once notification delivery. No external issues, Slack messages or deployments were created during verification. The reviewed source was subsequently published, with owner approval, at [https://github.com/ahamedfoisal/supportflow](https://github.com/ahamedfoisal/supportflow).
 
 ## Personally confirmed by the project owner
 
